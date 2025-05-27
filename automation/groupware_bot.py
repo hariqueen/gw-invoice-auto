@@ -9,7 +9,7 @@ import re
 from .config import Config
 
 class GroupwareAutomation:
-    """그룹웨어 자동화 클래스 - 체크박스 문제 해결"""
+    """그룹웨어 자동화 클래스 - 완전히 새로 작성"""
     
     def __init__(self):
         self.config = Config()
@@ -103,13 +103,7 @@ class GroupwareAutomation:
             print("  4) 검색 버튼 클릭")
             search_btn = self.wait.until(EC.element_to_be_clickable((By.ID, "btnExpendCardListSearch")))
             search_btn.click()
-            
-            # 5. 검색 결과 로딩 대기 (중요!)
-            print("  5) 검색 결과 로딩 대기...")
-            time.sleep(8)  # 더 긴 대기 시간
-            
-            # 6. 검색 결과 확인
-            self._verify_search_results()
+            time.sleep(5)
             
             print("✅ 카드 사용내역 설정 완료")
             return True
@@ -118,7 +112,7 @@ class GroupwareAutomation:
             raise Exception(f"카드 사용내역 설정 실패: {e}")
 
     def _input_dates(self, start_date, end_date):
-        """날짜 입력 (개선된 버전 - TAB 키 사용)"""
+        """날짜 입력 (내부 메서드)"""
         try:
             # 날짜 형식 변환 (YYYYMMDD -> YYYY-MM-DD)
             formatted_start = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
@@ -128,16 +122,17 @@ class GroupwareAutomation:
             
             # 시작 날짜 입력
             start_input = self.wait.until(EC.presence_of_element_located((By.ID, "txtExpendCardFromDate")))
-            self._clear_and_input_with_tab(start_input, formatted_start)
+            self._clear_and_input(start_input, formatted_start)
+            time.sleep(2)
             
             print(f"    종료날짜 입력: {formatted_end}")
             
             # 종료 날짜 입력
             end_input = self.driver.find_element(By.ID, "txtExpendCardToDate")
-            self._clear_and_input_final(end_input, formatted_end)
+            self._clear_and_input(end_input, formatted_end)
+            time.sleep(2)
             
             # 검증
-            time.sleep(2)
             actual_start = start_input.get_attribute('value')
             actual_end = end_input.get_attribute('value')
             print(f"    입력 확인 - 시작: {actual_start}, 종료: {actual_end}")
@@ -149,8 +144,8 @@ class GroupwareAutomation:
             print(f"    키보드 입력 실패, JavaScript로 재시도: {e}")
             return self._input_dates_with_javascript(formatted_start, formatted_end)
 
-    def _clear_and_input_with_tab(self, element, value):
-        """요소 클리어 후 값 입력 (TAB 키 사용)"""
+    def _clear_and_input(self, element, value):
+        """요소 클리어 후 값 입력"""
         element.click()
         time.sleep(0.5)
         element.send_keys(Keys.CONTROL + "a")
@@ -159,21 +154,7 @@ class GroupwareAutomation:
         time.sleep(0.3)
         element.send_keys(value)
         time.sleep(0.5)
-        element.send_keys(Keys.TAB)  # ENTER 대신 TAB 사용
-        time.sleep(1)
-
-    def _clear_and_input_final(self, element, value):
-        """마지막 날짜 입력 (ENTER나 TAB 없이)"""
-        element.click()
-        time.sleep(0.5)
-        element.send_keys(Keys.CONTROL + "a")
-        time.sleep(0.3)
-        element.send_keys(Keys.DELETE)
-        time.sleep(0.3)
-        element.send_keys(value)
-        time.sleep(1)
-        # 마지막이므로 키 입력 없이 포커스만 이동
-        self.driver.find_element(By.TAG_NAME, "body").click()
+        element.send_keys(Keys.ENTER)
         time.sleep(1)
 
     def _input_dates_with_javascript(self, formatted_start, formatted_end):
@@ -200,29 +181,6 @@ class GroupwareAutomation:
             
         except Exception as e:
             raise Exception(f"JavaScript 날짜 입력 실패: {e}")
-
-    def _verify_search_results(self):
-        """검색 결과 확인"""
-        try:
-            # 금액 테이블이 로딩될 때까지 대기
-            print("    검색 결과 테이블 확인...")
-            
-            # 금액 셀들이 나타날 때까지 대기
-            amount_cells = self.wait.until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.td_ri span.fwb"))
-            )
-            
-            print(f"    검색 결과: {len(amount_cells)}개 항목 발견")
-            
-            # 처음 몇 개 금액 출력해서 확인
-            for i, cell in enumerate(amount_cells[:3]):  # 처음 3개만 출력
-                print(f"    금액 {i+1}: {cell.text}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"    ⚠️ 검색 결과 확인 실패: {e}")
-            return False
 
     def process_single_record(self, data_row, record_index, total_records):
         """단일 레코드 처리"""
@@ -254,21 +212,13 @@ class GroupwareAutomation:
             return False
 
     def _find_and_click_checkbox(self, target_amount):
-        """금액 매칭하여 체크박스 클릭 (개선된 버전)"""
+        """금액 매칭하여 체크박스 클릭 - 이미 처리된 항목 건너뛰기"""
         try:
             clean_target = self._clean_amount(str(target_amount))
             print(f"      찾는 금액: {clean_target}")
             
-            # 새로고침 후 금액 셀들 다시 찾기
-            time.sleep(2)
+            # 금액 셀들 찾기
             amount_cells = self.driver.find_elements(By.CSS_SELECTOR, "td.td_ri span.fwb")
-            
-            if not amount_cells:
-                print("      ❌ 금액 셀을 찾을 수 없음. 페이지 새로고침 시도...")
-                self.driver.refresh()
-                time.sleep(5)
-                amount_cells = self.driver.find_elements(By.CSS_SELECTOR, "td.td_ri span.fwb")
-            
             print(f"      총 {len(amount_cells)}개 금액 셀 발견")
             
             for i, cell in enumerate(amount_cells):
@@ -276,35 +226,58 @@ class GroupwareAutomation:
                 print(f"      웹 금액 {i+1}: {cell.text} -> {cell_amount}")
                 
                 if cell_amount == clean_target:
-                    print(f"      💡 매칭 성공! 행 {i+1}")
+                    print(f"      💡 금액 매칭! 행 {i+1}")
                     
-                    # 다양한 체크박스 XPath 시도
-                    checkbox_xpaths = [
-                        f"/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[3]/div[2]/table/tbody/tr[{i+1}]/td[1]/span/input",
-                        f"//table//tr[{i+1}]//input[@name='inp_CardChk']",
-                        f"//tr[{i+1}]//input[contains(@name, 'CardChk')]"
-                    ]
+                    # 이미 처리된 행인지 확인
+                    if self._is_row_already_processed(i):
+                        print(f"      ⏭️ 행 {i+1}은 이미 처리됨 - 건너뛰기")
+                        continue  # 다음 매칭되는 행으로 넘어감
                     
-                    for xpath in checkbox_xpaths:
-                        try:
-                            print(f"      체크박스 XPath 시도: {xpath}")
-                            checkbox = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
-                            
-                            # 스크롤해서 체크박스가 보이도록 하기
-                            self.driver.execute_script("arguments[0].scrollIntoView(true);", checkbox)
+                    print(f"      🎯 행 {i+1}을 처리합니다")
+                    
+                    # 기존 체크박스 클릭 로직 그대로 사용
+                    row_index = i + 1
+                    
+                    # 방법 1: label 클릭
+                    print(f"      🔄 방법1 시도: label 클릭")
+                    checkbox_label_xpath = f"/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[3]/div[2]/table/tbody/tr[{row_index}]/td[1]/span/label"
+                    try:
+                        checkbox_label = self.wait.until(EC.element_to_be_clickable((By.XPATH, checkbox_label_xpath)))
+                        checkbox_label.click()
+                        time.sleep(1)
+                        print(f"      ✅ 성공! 방법1(label 클릭)으로 체크박스 클릭 완료")
+                        return True
+                    except Exception as e:
+                        print(f"      ❌ 방법1 실패: {e}")
+                    
+                    # 방법 2: input 클릭
+                    print(f"      🔄 방법2 시도: input 클릭")
+                    checkbox_input_xpath = f"/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[3]/div[2]/table/tbody/tr[{row_index}]/td[1]/span/input"
+                    try:
+                        checkbox_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, checkbox_input_xpath)))
+                        checkbox_input.click()
+                        time.sleep(1)
+                        print(f"      ✅ 성공! 방법2(input 클릭)으로 체크박스 클릭 완료")
+                        return True
+                    except Exception as e:
+                        print(f"      ❌ 방법2 실패: {e}")
+                    
+                    # 방법 3: name으로 찾기
+                    print(f"      🔄 방법3 시도: name 속성으로 찾기")
+                    try:
+                        checkboxes = self.driver.find_elements(By.NAME, "inp_CardChk")
+                        print(f"      name='inp_CardChk'로 {len(checkboxes)}개 체크박스 발견")
+                        if i < len(checkboxes):
+                            checkboxes[i].click()
                             time.sleep(1)
-                            
-                            checkbox.click()
-                            time.sleep(2)
-                            
-                            print(f"      ✅ 체크박스 클릭 성공")
+                            print(f"      ✅ 성공! 방법3(name 속성)으로 체크박스 클릭 완료")
                             return True
-                            
-                        except Exception as e:
-                            print(f"      XPath 실패: {e}")
-                            continue
+                        else:
+                            print(f"      ❌ 방법3 실패: 인덱스 {i}가 체크박스 개수 {len(checkboxes)}를 초과")
+                    except Exception as e:
+                        print(f"      ❌ 방법3 실패: {e}")
                     
-                    print(f"      ❌ 모든 체크박스 XPath 실패")
+                    print(f"      ❌ 모든 방법 실패")
                     return False
             
             print(f"      ❌ 매칭되는 금액을 찾지 못함")
@@ -312,6 +285,53 @@ class GroupwareAutomation:
             
         except Exception as e:
             print(f"      ❌ 체크박스 클릭 실패: {e}")
+            return False
+
+    def _is_row_already_processed(self, row_index):
+        """해당 행이 이미 처리되었는지 확인 - 마지막 컬럼의 span 태그 확인"""
+        try:
+            # 해당 행의 마지막 td (4번째 컬럼) 확인
+            row_xpath = f"/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[3]/div[2]/table/tbody/tr[{row_index + 1}]"
+            
+            try:
+                row_element = self.driver.find_element(By.XPATH, row_xpath)
+                # 마지막 td 찾기 (4번째 컬럼)
+                last_td = row_element.find_element(By.CSS_SELECTOR, "td:last-child")
+                
+                # td 내부의 모든 span 태그 확인
+                spans = last_td.find_elements(By.TAG_NAME, "span")
+                
+                # span이 없거나 모든 span이 비어있으면 미처리
+                if not spans:
+                    print(f"        ✅ 행 {row_index+1}은 아직 처리되지 않음 (span 없음)")
+                    return False
+                
+                # span들에 의미있는 데이터가 있는지 확인
+                has_data = False
+                span_contents = []
+                
+                for span in spans:
+                    span_text = span.text.strip()
+                    span_id = span.get_attribute("id")
+                    
+                    # span에 텍스트나 id가 있으면 데이터가 있는 것
+                    if span_text or span_id:
+                        has_data = True
+                        span_contents.append(f"'{span_text}'" if span_text else f"id='{span_id}'")
+                
+                if has_data:
+                    print(f"        💡 행 {row_index+1}은 이미 처리됨 (span 데이터: {', '.join(span_contents)})")
+                    return True
+                else:
+                    print(f"        ✅ 행 {row_index+1}은 아직 처리되지 않음 (span들이 모두 비어있음)")
+                    return False
+                    
+            except Exception as e:
+                print(f"        ❓ 행 {row_index+1} 확인 실패: {e} - 미처리로 간주")
+                return False
+            
+        except Exception as e:
+            print(f"        ❓ 처리 여부 확인 실패: {e} - 미처리로 간주")
             return False
 
     def _clean_amount(self, amount_text):
@@ -347,7 +367,7 @@ class GroupwareAutomation:
                 summary_input = self.driver.find_element(By.ID, "txtExpendCardDispSummary")
                 summary_input.clear()
                 summary_input.send_keys(data_row['standard_summary'])
-                summary_input.send_keys(Keys.TAB)  # ENTER 대신 TAB
+                summary_input.send_keys(Keys.ENTER)
                 time.sleep(1)
             
             # 증빙 유형 입력
@@ -356,7 +376,7 @@ class GroupwareAutomation:
                 evidence_input = self.driver.find_element(By.ID, "txtExpendCardDispAuth")
                 evidence_input.clear()
                 evidence_input.send_keys(data_row['evidence_type'])
-                evidence_input.send_keys(Keys.TAB)  # ENTER 대신 TAB
+                evidence_input.send_keys(Keys.ENTER)
                 time.sleep(1)
             
             # 적요 입력
@@ -365,7 +385,7 @@ class GroupwareAutomation:
                 note_input = self.driver.find_element(By.ID, "txtExpendCardDispNote")
                 note_input.clear()
                 note_input.send_keys(data_row['note'])
-                note_input.send_keys(Keys.TAB)  # ENTER 대신 TAB
+                note_input.send_keys(Keys.ENTER)
                 time.sleep(1)
             
             # 프로젝트 입력
@@ -374,7 +394,7 @@ class GroupwareAutomation:
                 project_input = self.driver.find_element(By.ID, "txtExpendCardDispProject")
                 project_input.clear()
                 project_input.send_keys(data_row['project'])
-                # 마지막 필드이므로 TAB 없이
+                project_input.send_keys(Keys.ENTER)
                 time.sleep(1)
             
             return True
@@ -387,7 +407,7 @@ class GroupwareAutomation:
         try:
             save_btn = self.wait.until(EC.element_to_be_clickable((By.ID, "btnExpendCardInfoSave")))
             save_btn.click()
-            time.sleep(3)  # 저장 후 더 긴 대기
+            time.sleep(2)
             return True
         except Exception as e:
             raise Exception(f"저장 버튼 클릭 실패: {e}")
@@ -439,16 +459,10 @@ class GroupwareAutomation:
                 # 4-2. 카드 사용내역 설정 (배치당 1회)
                 self.setup_card_interface(start_date, end_date)
                 
-                # 4-3. 각 레코드 처리
-                success_count = 0
-                for i, data_row in enumerate(current_batch):
-                    record_index = batch_start + i + 1
-                    
-                    if progress_callback:
-                        progress_callback(f"레코드 처리 중... ({record_index}/{total_records})")
-                    
-                    if self.process_single_record(data_row, record_index, total_records):
-                        success_count += 1
+                # 4-3. 모든 페이지에서 레코드 처리
+                success_count = self.process_all_pages_in_batch(
+                    current_batch, batch_start, total_records, progress_callback
+                )
                 
                 print(f"✅ 배치 {batch_num + 1} 완료: {success_count}/{len(current_batch)} 성공")
                 
@@ -473,3 +487,130 @@ class GroupwareAutomation:
             if self.driver:
                 print("🔚 브라우저 종료")
                 self.driver.quit()
+
+
+    def process_all_pages_in_batch(self, current_batch, batch_start, total_records, progress_callback=None):
+        """배치 내 모든 페이지 처리"""
+        try:
+            total_processed = 0
+            page_num = 1
+            
+            while True:
+                print(f"\n📄 페이지 {page_num} 처리 시작")
+                
+                # 현재 페이지에서 처리할 수 있는 데이터 찾기
+                page_processed = 0
+                
+                for i, data_row in enumerate(current_batch):
+                    record_index = batch_start + total_processed + 1
+                    
+                    # 이미 처리된 데이터는 건너뛰기
+                    if total_processed >= len(current_batch):
+                        break
+                    
+                    if progress_callback:
+                        progress_callback(f"레코드 처리 중... ({record_index}/{total_records})")
+                    
+                    if self.process_single_record(data_row, record_index, total_records):
+                        page_processed += 1
+                        total_processed += 1
+                        
+                        # 현재 배치의 모든 데이터를 처리했으면 종료
+                        if total_processed >= len(current_batch):
+                            print(f"✅ 배치 내 모든 데이터 처리 완료")
+                            break
+                    else:
+                        # 현재 페이지에서 처리할 데이터가 없으면 다음 페이지로
+                        break
+                
+                print(f"📄 페이지 {page_num} 완료: {page_processed}개 처리됨")
+                
+                # 현재 배치의 모든 데이터를 처리했으면 종료
+                if total_processed >= len(current_batch):
+                    break
+                
+                # 다음 페이지로 이동 시도
+                if not self._go_to_next_page():
+                    print("🔚 더 이상 다음 페이지가 없거나 이동 실패")
+                    break
+                    
+                page_num += 1
+                time.sleep(2)  # 페이지 로딩 대기
+            
+            print(f"✅ 총 {total_processed}개 레코드 처리 완료")
+            
+            # 모든 처리가 끝나면 반영 버튼 클릭
+            self._click_apply_button()
+            
+            return total_processed
+            
+        except Exception as e:
+            print(f"❌ 페이지 처리 실패: {e}")
+            return total_processed
+        
+    def _go_to_next_page(self):
+        """다음 페이지로 이동"""
+        try:
+            print("🔄 다음 페이지로 이동 시도...")
+            
+            # 다음 버튼 찾기 - 여러 방법 시도
+            next_selectors = [
+                (By.ID, "tblExpendCardList_next"),
+                (By.XPATH, "/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[5]/a[2]"),
+                (By.CSS_SELECTOR, "a.paginate_button.next"),
+                (By.XPATH, "//a[contains(@class, 'paginate_button') and contains(@class, 'next')]")
+            ]
+            
+            next_btn = None
+            for selector_type, selector in next_selectors:
+                try:
+                    next_btn = self.driver.find_element(selector_type, selector)
+                    break
+                except:
+                    continue
+            
+            if not next_btn:
+                print("❌ 다음 버튼을 찾을 수 없음")
+                return False
+            
+            # 다음 버튼이 활성화되어 있는지 확인
+            btn_class = next_btn.get_attribute("class")
+            if "disabled" in btn_class:
+                print("🔚 다음 버튼이 비활성화됨 - 마지막 페이지")
+                return False
+            
+            # 다음 버튼 클릭
+            next_btn.click()
+            time.sleep(3)  # 페이지 로딩 대기
+            
+            print("✅ 다음 페이지로 이동 완료")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 다음 페이지 이동 실패: {e}")
+            return False
+    
+    def _click_apply_button(self):
+        """반영 버튼 클릭"""
+        try:
+            print("🔄 반영 버튼 클릭...")
+            
+            # config에서 반영 버튼 정보 가져오기
+            apply_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, self.config.CARD_ELEMENTS["apply_btn"])))
+            apply_btn.click()
+            time.sleep(3)  # 반영 처리 대기
+            
+            print("✅ 반영 완료")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 반영 버튼 클릭 실패: {e}")
+            # 백업 방법
+            try:
+                apply_btn = self.driver.find_element(By.ID, "btnExpendCardToExpend")
+                apply_btn.click()
+                time.sleep(3)
+                print("✅ 반영 완료 (백업 방법)")
+                return True
+            except:
+                return False
