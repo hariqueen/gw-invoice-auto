@@ -434,45 +434,66 @@ class GroupwareAutomation:
             
             start_date = processed_data[0].get('start_date', '')
             end_date = processed_data[0].get('end_date', '')
-            batch_size = self.config.SAVE_LIMIT  # 100
             
             print(f"📊 총 레코드 수: {total_records}")
             print(f"📅 처리 기간: {start_date} ~ {end_date}")
-            print(f"📦 배치 크기: {batch_size}")
             
-            # 4. 배치별 처리
-            total_batches = (total_records + batch_size - 1) // batch_size
+            # 4. 데이터 처리 루프
+            processed_count = 0
             
-            for batch_num in range(total_batches):
-                batch_start = batch_num * batch_size
-                batch_end = min(batch_start + batch_size, total_records)
-                current_batch = processed_data[batch_start:batch_end]
-                
-                print(f"\n🔄 배치 {batch_num + 1}/{total_batches} 시작 (레코드 {batch_start + 1}~{batch_end})")
+            while processed_count < total_records:
+                print(f"\n🔄 처리 라운드 시작 (진행률: {processed_count}/{total_records})")
                 
                 if progress_callback:
-                    progress_callback(f"배치 {batch_num + 1}/{total_batches} 처리 중...")
+                    progress_callback(f"데이터 처리 중... ({processed_count}/{total_records})")
                 
                 # 4-1. 페이지로 이동
                 self.navigate_to_expense_page()
                 
-                # 4-2. 카드 사용내역 설정 (배치당 1회)
+                # 4-2. 카드 사용내역 설정
                 self.setup_card_interface(start_date, end_date)
                 
-                # 4-3. 모든 페이지에서 레코드 처리
-                success_count = self.process_all_pages_in_batch(
-                    current_batch, batch_start, total_records, progress_callback
-                )
+                # 4-3. 현재 페이지에서 처리 가능한 모든 데이터 입력
+                round_processed = 0
                 
-                print(f"✅ 배치 {batch_num + 1} 완료: {success_count}/{len(current_batch)} 성공")
+                for i in range(processed_count, total_records):
+                    data_row = processed_data[i]
+                    record_index = i + 1
+                    
+                    if progress_callback:
+                        progress_callback(f"레코드 처리 중... ({record_index}/{total_records})")
+                    
+                    # 개별 레코드 처리 (체크박스 → 입력 → 저장)
+                    if self.process_single_record(data_row, record_index, total_records):
+                        round_processed += 1
+                        processed_count += 1
+                    else:
+                        # 현재 페이지에서 더 이상 처리할 수 없으면 중단
+                        print(f"   💡 현재 페이지에서 더 이상 처리할 데이터가 없음")
+                        break
                 
-                if progress_callback:
-                    progress_callback(f"배치 {batch_num + 1} 완료: {success_count}/{len(current_batch)} 성공")
+                print(f"✅ 현재 라운드 완료: {round_processed}개 처리됨")
                 
-                # 배치 간 대기
-                if batch_num < total_batches - 1:  # 마지막 배치가 아니면
-                    print("⏳ 다음 배치 준비 중...")
-                    time.sleep(3)
+                # 4-4. 처리된 데이터가 있으면 전체 체크박스 클릭 후 반영
+                if round_processed > 0:
+                    print("🔄 전체 체크박스 클릭 및 반영 시작...")
+                    
+                    # 전체 체크박스 클릭
+                    if self._click_select_all_checkbox():
+                        # 반영 버튼 클릭
+                        if self._click_apply_button():
+                            print(f"✅ {round_processed}개 데이터 반영 완료")
+                            time.sleep(3)  # 반영 후 페이지 전환 대기
+                        else:
+                            print("❌ 반영 실패")
+                            break
+                    else:
+                        print("❌ 전체 체크박스 클릭 실패")
+                        break
+                else:
+                    # 더 이상 처리할 데이터가 없으면 종료
+                    print("🔚 모든 데이터 처리 완료")
+                    break
             
             print("🎉 모든 작업 완료!")
             if progress_callback:
@@ -487,122 +508,19 @@ class GroupwareAutomation:
             if self.driver:
                 print("🔚 브라우저 종료")
                 self.driver.quit()
-
-
-    def process_all_pages_in_batch(self, current_batch, batch_start, total_records, progress_callback=None):
-        """배치 내 모든 페이지 처리"""
-        try:
-            total_processed = 0
-            page_num = 1
-            
-            while True:
-                print(f"\n📄 페이지 {page_num} 처리 시작")
-                
-                # 현재 페이지에서 처리할 수 있는 데이터 찾기
-                page_processed = 0
-                
-                for i, data_row in enumerate(current_batch):
-                    record_index = batch_start + total_processed + 1
-                    
-                    # 이미 처리된 데이터는 건너뛰기
-                    if total_processed >= len(current_batch):
-                        break
-                    
-                    if progress_callback:
-                        progress_callback(f"레코드 처리 중... ({record_index}/{total_records})")
-                    
-                    if self.process_single_record(data_row, record_index, total_records):
-                        page_processed += 1
-                        total_processed += 1
-                        
-                        # 현재 배치의 모든 데이터를 처리했으면 종료
-                        if total_processed >= len(current_batch):
-                            print(f"✅ 배치 내 모든 데이터 처리 완료")
-                            break
-                    else:
-                        # 현재 페이지에서 처리할 데이터가 없으면 다음 페이지로
-                        break
-                
-                print(f"📄 페이지 {page_num} 완료: {page_processed}개 처리됨")
-                
-                # 현재 배치의 모든 데이터를 처리했으면 종료
-                if total_processed >= len(current_batch):
-                    break
-                
-                # 다음 페이지로 이동 시도
-                if not self._go_to_next_page():
-                    print("🔚 더 이상 다음 페이지가 없거나 이동 실패")
-                    break
-                    
-                page_num += 1
-                time.sleep(2)  # 페이지 로딩 대기
-            
-            print(f"✅ 총 {total_processed}개 레코드 처리 완료")
-            
-            # 모든 처리가 끝나면 반영 버튼 클릭
-            self._click_apply_button()
-            
-            return total_processed
-            
-        except Exception as e:
-            print(f"❌ 페이지 처리 실패: {e}")
-            return total_processed
         
-    def _go_to_next_page(self):
-        """다음 페이지로 이동"""
-        try:
-            print("🔄 다음 페이지로 이동 시도...")
-            
-            # 다음 버튼 찾기 - 여러 방법 시도
-            next_selectors = [
-                (By.ID, "tblExpendCardList_next"),
-                (By.XPATH, "/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[5]/a[2]"),
-                (By.CSS_SELECTOR, "a.paginate_button.next"),
-                (By.XPATH, "//a[contains(@class, 'paginate_button') and contains(@class, 'next')]")
-            ]
-            
-            next_btn = None
-            for selector_type, selector in next_selectors:
-                try:
-                    next_btn = self.driver.find_element(selector_type, selector)
-                    break
-                except:
-                    continue
-            
-            if not next_btn:
-                print("❌ 다음 버튼을 찾을 수 없음")
-                return False
-            
-            # 다음 버튼이 활성화되어 있는지 확인
-            btn_class = next_btn.get_attribute("class")
-            if "disabled" in btn_class:
-                print("🔚 다음 버튼이 비활성화됨 - 마지막 페이지")
-                return False
-            
-            # 다음 버튼 클릭
-            next_btn.click()
-            time.sleep(3)  # 페이지 로딩 대기
-            
-            print("✅ 다음 페이지로 이동 완료")
-            return True
-            
-        except Exception as e:
-            print(f"❌ 다음 페이지 이동 실패: {e}")
-            return False
-    
     def _click_apply_button(self):
         """반영 버튼 클릭"""
         try:
             print("🔄 반영 버튼 클릭...")
-            
             # config에서 반영 버튼 정보 가져오기
             apply_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, self.config.CARD_ELEMENTS["apply_btn"])))
             apply_btn.click()
             time.sleep(3)  # 반영 처리 대기
-            
+                
             print("✅ 반영 완료")
             return True
-            
+                
         except Exception as e:
             print(f"❌ 반영 버튼 클릭 실패: {e}")
             # 백업 방법
@@ -613,4 +531,39 @@ class GroupwareAutomation:
                 print("✅ 반영 완료 (백업 방법)")
                 return True
             except:
+                return False    
+                   
+    def _click_select_all_checkbox(self):
+        """전체 체크박스 클릭하여 모든 항목 선택"""
+        try:
+            print("🔄 전체 체크박스 클릭...")
+            
+            # 전체 체크박스 찾기 - 여러 방법 시도
+            select_all_selectors = [
+                (By.XPATH, "/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[2]/div/div[3]/div[1]/div/table/thead/tr/th[1]/input"),
+                (By.ID, "inp_ListChk"),
+                (By.NAME, "inp_ListChk"),
+                (By.CSS_SELECTOR, "input[id='inp_ListChk']")
+            ]
+            
+            select_all_btn = None
+            for selector_type, selector in select_all_selectors:
+                try:
+                    select_all_btn = self.wait.until(EC.element_to_be_clickable((selector_type, selector)))
+                    break
+                except:
+                    continue
+            
+            if not select_all_btn:
+                print("❌ 전체 체크박스를 찾을 수 없음")
                 return False
+            
+            select_all_btn.click()
+            time.sleep(2)  # 체크박스 선택 처리 대기
+            
+            print("✅ 전체 체크박스 클릭 완료")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 전체 체크박스 클릭 실패: {e}")
+            return False
