@@ -517,8 +517,9 @@ class GroupwareAutomation:
             raise Exception(f"레코드 처리 실패: {e}")
         
     def input_form_data_step_by_step(self, data_row):
-        """폼 데이터 단계별 입력"""
+        """폼 데이터 단계별 입력 (올바른 순서)"""
         try:
+            print("  4. 표준적요 입력")
             # 4. [표준 적요] 입력
             if data_row.get('standard_summary'):
                 summary_input = self.driver.find_element(By.ID, "txtExpendCardDispSummary")
@@ -526,7 +527,9 @@ class GroupwareAutomation:
                 summary_input.send_keys(data_row['standard_summary'])
                 summary_input.send_keys(Keys.ENTER)
                 time.sleep(1)
+                print(f"     입력값: {data_row['standard_summary']}")
             
+            print("  5. 증빙유형 입력")
             # 5. [증빙 유형] 입력
             if data_row.get('evidence_type'):
                 evidence_input = self.driver.find_element(By.ID, "txtExpendCardDispAuth")
@@ -534,7 +537,9 @@ class GroupwareAutomation:
                 evidence_input.send_keys(data_row['evidence_type'])
                 evidence_input.send_keys(Keys.ENTER)
                 time.sleep(1)
+                print(f"     입력값: {data_row['evidence_type']}")
             
+            print("  6. 적요 입력")
             # 6. [적요] 입력
             if data_row.get('note'):
                 note_input = self.driver.find_element(By.ID, "txtExpendCardDispNote")
@@ -542,7 +547,9 @@ class GroupwareAutomation:
                 note_input.send_keys(data_row['note'])
                 note_input.send_keys(Keys.ENTER)
                 time.sleep(1)
+                print(f"     입력값: {data_row['note']}")
             
+            print("  7. 프로젝트 입력")
             # 7. [프로젝트] 입력
             if data_row.get('project'):
                 project_input = self.driver.find_element(By.ID, "txtExpendCardDispProject")
@@ -550,13 +557,14 @@ class GroupwareAutomation:
                 project_input.send_keys(data_row['project'])
                 project_input.send_keys(Keys.ENTER)
                 time.sleep(1)
+                print(f"     입력값: {data_row['project']}")
             
             return True
         except Exception as e:
             raise Exception(f"폼 데이터 입력 실패: {e}")
     
     def run_automation(self, processed_data, progress_callback=None, user_id="", password=""):
-        """자동화 실행 - 올바른 프로세스 순서"""
+        """자동화 실행 - 올바른 프로세스 순서 (수정됨)"""
         try:
             # WebDriver 설정
             if progress_callback:
@@ -590,56 +598,77 @@ class GroupwareAutomation:
                     progress_callback(f"배치 {batch_num}: 지출결의서 페이지로 이동 중...")
                 self.navigate_to_groupware()
                 
-                # === 2. 카드 사용내역 프로세스 시작 ===
+                # === 2. 카드 사용내역 프로세스 시작 (한번만 실행) ===
                 if progress_callback:
                     progress_callback(f"배치 {batch_num}: 카드 사용내역 설정 중...")
                 
+                print(f"=== 배치 {batch_num} 카드 사용내역 설정 시작 ===")
+                
                 # 2-1. [카드 사용내역] 클릭
+                print("2-1. 카드 사용내역 버튼 클릭")
                 self.click_card_history()
                 
                 # 2-2. [선택] 클릭
+                print("2-2. 선택 버튼 클릭")
                 self.click_select_button()
                 
-                # 2-3. [시작 날짜] 입력
-                # 2-4. [종료 날짜] 입력
+                # 2-3. [시작 날짜] 입력 & 2-4. [종료 날짜] 입력
+                print(f"2-3,4. 날짜 입력: {start_date} ~ {end_date}")
                 self.input_date_range(start_date, end_date)
                 
                 # 2-5. [검색] 클릭
+                print("2-5. 검색 버튼 클릭")
                 self.click_search()
+                
+                print(f"=== 배치 {batch_num} 카드 사용내역 설정 완료 ===")
                 
                 if progress_callback:
                     progress_callback(f"배치 {batch_num}: 검색 완료, 데이터 입력 시작...")
                 
-                # === 3-8. 각 레코드별 처리 ===
+                # === 3-8. 각 레코드별 처리 (여기서만 반복) ===
+                print(f"=== 배치 {batch_num} 레코드 처리 시작 ===")
+                
                 for i, data_row in enumerate(current_batch):
                     current_index = batch_start + i + 1
+                    print(f"\n--- 레코드 {current_index}/{total_records} 처리 시작 ---")
+                    print(f"처리할 금액: {data_row.get('amount', '')}")
+                    
                     if progress_callback:
                         progress_callback(f"레코드 처리 중... ({current_index}/{total_records})")
                     
                     try:
                         # 3. 금액 매칭하여 체크박스 클릭
+                        print("3. 금액 매칭 및 체크박스 클릭")
                         checkbox_xpath = self.find_matching_amount_row(data_row.get('amount', ''))
                         
                         if checkbox_xpath:
                             self.click_checkbox(checkbox_xpath)
                             
-                            # 4-7. 폼 데이터 입력
-                            self.input_form_data(data_row)
+                            # 4-7. 폼 데이터 입력 (올바른 메서드 호출)
+                            print("4-7. 폼 데이터 입력")
+                            self.input_form_data_step_by_step(data_row)
                             
                             # 8. 저장
+                            print("8. 저장 버튼 클릭")
                             self.click_save()
+                            
+                            print(f"✅ 레코드 {current_index} 완료")
                             
                             if progress_callback:
                                 progress_callback(f"레코드 저장 완료 ({current_index}/{total_records})")
                         else:
+                            print(f"❌ 금액 매칭 실패: {data_row.get('amount', '')}")
                             if progress_callback:
                                 progress_callback(f"⚠️ 금액 매칭 실패: {data_row.get('amount', '')} (레코드 {current_index})")
                             continue
                             
                     except Exception as e:
+                        print(f"❌ 레코드 {current_index} 처리 실패: {str(e)}")
                         if progress_callback:
                             progress_callback(f"⚠️ 레코드 {current_index} 처리 실패: {str(e)}")
                         continue
+                
+                print(f"=== 배치 {batch_num} 완료 ({len(current_batch)}개 처리) ===")
                 
                 if progress_callback:
                     progress_callback(f"배치 {batch_num} 완료 ({len(current_batch)}개 처리)")
@@ -647,10 +676,12 @@ class GroupwareAutomation:
                 # 배치 완료 후 잠시 대기
                 time.sleep(2)
             
+            print("=== 모든 작업 완료 ===")
             if progress_callback:
                 progress_callback("모든 작업이 완료되었습니다!")
             
         except Exception as e:
+            print(f"❌ 자동화 실패: {str(e)}")
             if progress_callback:
                 progress_callback(f"작업 중 오류 발생: {str(e)}")
             raise e
