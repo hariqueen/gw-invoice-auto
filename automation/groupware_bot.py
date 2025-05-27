@@ -438,22 +438,23 @@ class GroupwareAutomation:
             print(f"📊 총 레코드 수: {total_records}")
             print(f"📅 처리 기간: {start_date} ~ {end_date}")
             
-            # 4. 데이터 처리 루프
+            # 4. 첫 번째 페이지 이동 (최초 1회만)
+            self.navigate_to_expense_page()
+            
+            # 5. 데이터 처리 루프
             processed_count = 0
+            round_number = 1
             
             while processed_count < total_records:
-                print(f"\n🔄 처리 라운드 시작 (진행률: {processed_count}/{total_records})")
+                print(f"\n🔄 처리 라운드 {round_number} 시작 (진행률: {processed_count}/{total_records})")
                 
                 if progress_callback:
-                    progress_callback(f"데이터 처리 중... ({processed_count}/{total_records})")
+                    progress_callback(f"라운드 {round_number} 처리 중... ({processed_count}/{total_records})")
                 
-                # 4-1. 페이지로 이동
-                self.navigate_to_expense_page()
-                
-                # 4-2. 카드 사용내역 설정
+                # 5-1. 카드 사용내역 설정 (페이지 이동 없이)
                 self.setup_card_interface(start_date, end_date)
                 
-                # 4-3. 현재 페이지에서 처리 가능한 모든 데이터 입력
+                # 5-2. 현재 페이지에서 처리 가능한 모든 데이터 입력
                 round_processed = 0
                 
                 for i in range(processed_count, total_records):
@@ -472,18 +473,19 @@ class GroupwareAutomation:
                         print(f"   💡 현재 페이지에서 더 이상 처리할 데이터가 없음")
                         break
                 
-                print(f"✅ 현재 라운드 완료: {round_processed}개 처리됨")
+                print(f"✅ 라운드 {round_number} 완료: {round_processed}개 처리됨")
                 
-                # 4-4. 처리된 데이터가 있으면 전체 체크박스 클릭 후 반영
+                # 5-3. 처리된 데이터가 있으면 전체 체크박스 클릭 후 반영
                 if round_processed > 0:
                     print("🔄 전체 체크박스 클릭 및 반영 시작...")
                     
                     # 전체 체크박스 클릭
                     if self._click_select_all_checkbox():
-                        # 반영 버튼 클릭
+                        # 반영 버튼 클릭 및 완료 대기
                         if self._click_apply_button():
                             print(f"✅ {round_processed}개 데이터 반영 완료")
-                            time.sleep(3)  # 반영 후 페이지 전환 대기
+                            print("📋 반영된 데이터는 누적되었으며, 같은 화면에서 계속 진행합니다")
+                            time.sleep(2)  # 반영 후 안정화 대기
                         else:
                             print("❌ 반영 실패")
                             break
@@ -494,6 +496,8 @@ class GroupwareAutomation:
                     # 더 이상 처리할 데이터가 없으면 종료
                     print("🔚 모든 데이터 처리 완료")
                     break
+                
+                round_number += 1
             
             print("🎉 모든 작업 완료!")
             if progress_callback:
@@ -510,29 +514,126 @@ class GroupwareAutomation:
                 self.driver.quit()
         
     def _click_apply_button(self):
-        """반영 버튼 클릭"""
+        """반영 버튼 클릭 및 완료까지 대기"""
         try:
             print("🔄 반영 버튼 클릭...")
+            
             # config에서 반영 버튼 정보 가져오기
             apply_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, self.config.CARD_ELEMENTS["apply_btn"])))
             apply_btn.click()
-            time.sleep(3)  # 반영 처리 대기
-                
-            print("✅ 반영 완료")
-            return True
-                
+            print("✅ 반영 버튼 클릭 완료")
+            
+            # 반영 진행률 팝업이 나타날 때까지 대기
+            time.sleep(2)
+            
+            # 반영 완료까지 대기
+            if self._wait_for_apply_completion():
+                print("✅ 반영 완료")
+                return True
+            else:
+                print("❌ 반영 대기 중 오류 발생")
+                return False
+            
         except Exception as e:
             print(f"❌ 반영 버튼 클릭 실패: {e}")
             # 백업 방법
             try:
                 apply_btn = self.driver.find_element(By.ID, "btnExpendCardToExpend")
                 apply_btn.click()
-                time.sleep(3)
-                print("✅ 반영 완료 (백업 방법)")
-                return True
+                print("✅ 반영 버튼 클릭 완료 (백업 방법)")
+                
+                # 반영 완료까지 대기
+                if self._wait_for_apply_completion():
+                    print("✅ 반영 완료")
+                    return True
+                else:
+                    return False
             except:
                 return False    
-                   
+    
+    def _wait_for_apply_completion(self):
+        """반영 진행률 팝업이 사라질 때까지 대기"""
+        try:
+            print("⏳ 반영 진행률 팝업 대기 중...")
+            
+            # 팝업이 나타날 때까지 잠시 대기
+            time.sleep(3)
+            
+            # 팝업 선택자들
+            popup_selectors = [
+                (By.ID, "PLP_divMainProgPop"),
+                (By.CSS_SELECTOR, "div[id='PLP_divMainProgPop']"),
+                (By.XPATH, "//div[@id='PLP_divMainProgPop']")
+            ]
+            
+            # 팝업이 나타났는지 확인
+            popup_appeared = False
+            for selector_type, selector in popup_selectors:
+                try:
+                    popup = self.driver.find_element(selector_type, selector)
+                    if popup.is_displayed():
+                        popup_appeared = True
+                        print("📊 반영 진행률 팝업 감지됨")
+                        break
+                except:
+                    continue
+            
+            if not popup_appeared:
+                print("💡 반영 팝업이 감지되지 않음 - 즉시 완료된 것으로 판단")
+                time.sleep(5)  # 안전을 위한 추가 대기
+                return True
+            
+            # 팝업이 사라질 때까지 대기
+            max_wait_time = 300  # 최대 5분 대기
+            wait_count = 0
+            
+            while wait_count < max_wait_time:
+                try:
+                    # 진행률 확인
+                    progress_element = self.driver.find_element(By.ID, "PLP_txtProgValue")
+                    progress_text = progress_element.text.strip()
+                    print(f"📈 반영 진행률: {progress_text}")
+                    
+                    # 총 건수와 실패 건수 확인
+                    try:
+                        total_count = self.driver.find_element(By.ID, "PLP_txtFullCnt").text.strip()
+                        error_count = self.driver.find_element(By.ID, "PLP_txtErrorCnt").text.strip()
+                        print(f"📋 총 {total_count}건 (실패 {error_count}건)")
+                    except:
+                        pass
+                    
+                    # 팝업이 여전히 존재하는지 확인
+                    popup_still_exists = False
+                    for selector_type, selector in popup_selectors:
+                        try:
+                            popup = self.driver.find_element(selector_type, selector)
+                            if popup.is_displayed():
+                                popup_still_exists = True
+                                break
+                        except:
+                            continue
+                    
+                    if not popup_still_exists:
+                        print("✅ 반영 팝업이 사라짐 - 반영 완료!")
+                        time.sleep(2)  # 페이지 전환 안정화 대기
+                        return True
+                    
+                    time.sleep(2)  # 2초마다 확인
+                    wait_count += 2
+                    
+                except Exception as e:
+                    # 팝업이 사라졌을 가능성
+                    print(f"💡 팝업 요소 접근 실패 (사라진 것으로 판단): {e}")
+                    time.sleep(2)
+                    return True
+            
+            print("⚠️ 반영 대기 시간 초과 (5분)")
+            return False
+            
+        except Exception as e:
+            print(f"❌ 반영 완료 대기 실패: {e}")
+            return False
+
     def _click_select_all_checkbox(self):
         """전체 체크박스 클릭하여 모든 항목 선택"""
         try:
