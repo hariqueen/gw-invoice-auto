@@ -16,7 +16,12 @@ class Config:
         # 선택 버튼
         "select_btn": "//button[@id='btnExpendCardInfoHelpPop']",
         "select_btn_xpath": "/html/body/div[4]/div[3]/div[3]/div[2]/div[1]/dl/dd[3]/div/button[1]",
-        
+
+        # 최신순 정렬 버튼
+        "latest_sort_label": "//label[@for='cardSortingDesc']",
+        "latest_sort_xpath": "/html/body/div[4]/div[3]/div[3]/div[2]/table/tbody/tr/td[1]/div[1]/div[1]/div/label[2]",
+        "latest_sort_radio": "//input[@id='cardSortingDesc']",
+                
         # 날짜 입력 필드 (수정됨)
         "start_date_input": "//input[@id='txtExpendCardFromDate']",
         "start_date_xpath": "/html/body/div[4]/div[3]/div[3]/div[2]/div[1]/dl/dd[1]/span[1]/span/input",

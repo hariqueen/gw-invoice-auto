@@ -79,9 +79,9 @@ class GroupwareAutomation:
             raise Exception(f"페이지 이동 실패: {e}")
 
     def setup_card_interface(self, start_date, end_date):
-        """카드 사용내역 인터페이스 설정 (1회만 실행)"""
+        """카드 사용내역 인터페이스 설정 (1회만 실행) - 최신순 정렬 추가"""
         try:
-            print("💳 카드 사용내역 설정 시작...")
+            print("카드 사용내역 설정 시작...")
             
             # 1. 카드 사용내역 버튼 클릭
             print("  1) 카드 사용내역 버튼 클릭")
@@ -105,11 +105,30 @@ class GroupwareAutomation:
             search_btn.click()
             time.sleep(5)
             
-            print("✅ 카드 사용내역 설정 완료")
+            # 5. 최신순 정렬 버튼 클릭 (NEW)
+            print("  5) 최신순 정렬 버튼 클릭")
+            self._click_latest_sort_button()
+            
+            print("카드 사용내역 설정 완료")
             return True
             
         except Exception as e:
             raise Exception(f"카드 사용내역 설정 실패: {e}")
+        
+    def _click_latest_sort_button(self):
+        """최신순 정렬 버튼 클릭"""
+        try:
+            print("    📊 최신순 정렬 적용 중...")
+            
+            latest_label = self.wait.until(EC.element_to_be_clickable((By.XPATH, self.config.CARD_ELEMENTS["latest_sort_xpath"])))
+            latest_label.click()
+            time.sleep(2)
+            print("    ✅ 최신순 정렬 완료")
+            return True
+            
+        except Exception as e:
+            print(f"    ❌ 최신순 정렬 실패: {e} - 계속 진행")
+            return False
 
     def _input_dates(self, start_date, end_date):
         """날짜 입력 (내부 메서드)"""
@@ -200,9 +219,9 @@ class GroupwareAutomation:
             print("   2) 폼 데이터 입력")
             self._input_form_data(data_row)
             
-            # 3. 저장
+            # 3. 저장 (data_row를 전달하여 재입력 가능하도록)
             print("   3) 저장")
-            self._click_save()
+            self._click_save(data_row)
             
             print(f"   ✅ 레코드 {record_index} 완료")
             return True
@@ -245,7 +264,7 @@ class GroupwareAutomation:
                         checkbox_label = self.wait.until(EC.element_to_be_clickable((By.XPATH, checkbox_label_xpath)))
                         checkbox_label.click()
                         time.sleep(1)
-                        print(f"      ✅ 성공! 방법1(label 클릭)으로 체크박스 클릭 완료")
+                        print(f"      성공! 방법1(label 클릭)으로 체크박스 클릭 완료")
                         return True
                     except Exception as e:
                         print(f"      ❌ 방법1 실패: {e}")
@@ -257,7 +276,7 @@ class GroupwareAutomation:
                         checkbox_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, checkbox_input_xpath)))
                         checkbox_input.click()
                         time.sleep(1)
-                        print(f"      ✅ 성공! 방법2(input 클릭)으로 체크박스 클릭 완료")
+                        print(f"      성공! 방법2(input 클릭)으로 체크박스 클릭 완료")
                         return True
                     except Exception as e:
                         print(f"      ❌ 방법2 실패: {e}")
@@ -270,7 +289,7 @@ class GroupwareAutomation:
                         if i < len(checkboxes):
                             checkboxes[i].click()
                             time.sleep(1)
-                            print(f"      ✅ 성공! 방법3(name 속성)으로 체크박스 클릭 완료")
+                            print(f"      성공! 방법3(name 속성)으로 체크박스 클릭 완료")
                             return True
                         else:
                             print(f"      ❌ 방법3 실패: 인덱스 {i}가 체크박스 개수 {len(checkboxes)}를 초과")
@@ -402,16 +421,89 @@ class GroupwareAutomation:
         except Exception as e:
             raise Exception(f"폼 데이터 입력 실패: {e}")
 
-    def _click_save(self):
-        """저장 버튼 클릭"""
-        try:
-            save_btn = self.wait.until(EC.element_to_be_clickable((By.ID, "btnExpendCardInfoSave")))
-            save_btn.click()
-            time.sleep(2)
-            return True
-        except Exception as e:
-            raise Exception(f"저장 버튼 클릭 실패: {e}")
+    def _click_save(self, data_row=None):
+        """저장 버튼 클릭 및 실패시 재입력 처리"""
+        max_retry = 2
+        
+        for retry in range(max_retry):
+            try:
+                save_btn = self.wait.until(EC.element_to_be_clickable((By.ID, "btnExpendCardInfoSave")))
+                save_btn.click()
+                
+                # 저장 후 잠시 대기
+                time.sleep(3)
+                
+                # Alert 확인
+                try:
+                    alert = self.driver.switch_to.alert
+                    alert_text = alert.text
+                    print(f"      ⚠️ Alert 발생: {alert_text}")
+                    alert.accept()  # alert 확인 버튼 클릭
+                    time.sleep(1)
+                    
+                    # Alert 내용에 따라 해당 필드 재입력
+                    if "표준적요" in alert_text and data_row:
+                        print(f"      🔄 표준적요 재입력 시도")
+                        self._retry_input_field("standard_summary", data_row.get('standard_summary', ''))
+                    elif "증빙유형" in alert_text and data_row:
+                        print(f"      🔄 증빙유형 재입력 시도")
+                        self._retry_input_field("evidence_type", data_row.get('evidence_type', ''))
+                    elif "적요" in alert_text and data_row:
+                        print(f"      🔄 적요 재입력 시도")
+                        self._retry_input_field("note", data_row.get('note', ''))
+                    elif "프로젝트" in alert_text and data_row:
+                        print(f"      🔄 프로젝트 재입력 시도")
+                        self._retry_input_field("project", data_row.get('project', ''))
+                    
+                    # 재입력 후 다시 저장 시도
+                    continue
+                    
+                except Exception:
+                    # alert가 없으면 저장 성공
+                    print(f"      ✅ 저장 완료")
+                    return True
+            
+            except Exception as e:
+                print(f"      ❌ 저장 시도 {retry + 1} 실패: {e}")
+                if retry == max_retry - 1:
+                    raise Exception(f"저장 버튼 클릭 실패: {e}")
+                time.sleep(2)
+        
+        return True
 
+    def _retry_input_field(self, field_type, value):
+        """특정 필드 재입력"""
+        try:
+            if not value:
+                print(f"        ❌ {field_type} 값이 없어 재입력 불가")
+                return
+            
+            field_mapping = {
+                "standard_summary": "txtExpendCardDispSummary",
+                "evidence_type": "txtExpendCardDispAuth", 
+                "note": "txtExpendCardDispNote",
+                "project": "txtExpendCardDispProject"
+            }
+            
+            field_id = field_mapping.get(field_type)
+            if not field_id:
+                return
+            
+            print(f"        🔄 {field_type} 재입력: {value}")
+            
+            # 필드 클리어 후 재입력
+            field_input = self.driver.find_element(By.ID, field_id)
+            field_input.clear()
+            time.sleep(0.5)
+            field_input.send_keys(value)
+            field_input.send_keys(Keys.ENTER)
+            time.sleep(1)
+            
+            print(f"        ✅ {field_type} 재입력 완료")
+            
+        except Exception as e:
+            print(f"        ❌ {field_type} 재입력 실패: {e}")
+    
     def run_automation(self, processed_data, progress_callback=None, user_id="", password=""):
         """메인 자동화 실행 메서드"""
         try:
@@ -456,6 +548,7 @@ class GroupwareAutomation:
                 
                 # 5-2. 현재 페이지에서 처리 가능한 모든 데이터 입력
                 round_processed = 0
+                page_exhausted = False  # 현재 페이지에서 더 이상 처리할 데이터가 없는지 체크
                 
                 for i in range(processed_count, total_records):
                     data_row = processed_data[i]
@@ -471,12 +564,16 @@ class GroupwareAutomation:
                     else:
                         # 현재 페이지에서 더 이상 처리할 수 없으면 중단
                         print(f"   💡 현재 페이지에서 더 이상 처리할 데이터가 없음")
+                        page_exhausted = True
                         break
                 
                 print(f"✅ 라운드 {round_number} 완료: {round_processed}개 처리됨")
                 
                 # 5-3. 처리된 데이터가 있으면 전체 체크박스 클릭 후 반영
                 if round_processed > 0:
+                    # 반영 전에 페이지네이션 확인 (반영 후에는 창이 닫히므로)
+                    has_next_page = self._check_has_next_page()
+                    
                     print("🔄 전체 체크박스 클릭 및 반영 시작...")
                     
                     # 전체 체크박스 클릭
@@ -486,6 +583,11 @@ class GroupwareAutomation:
                             print(f"✅ {round_processed}개 데이터 반영 완료")
                             print("📋 반영된 데이터는 누적되었으며, 같은 화면에서 계속 진행합니다")
                             time.sleep(2)  # 반영 후 안정화 대기
+                            
+                            # 반영 전에 확인한 페이지네이션 결과로 다음 라운드 진행 여부 결정
+                            if not has_next_page:
+                                print("🔚 다음 페이지가 없어 작업을 종료합니다")
+                                break
                         else:
                             print("❌ 반영 실패")
                             break
@@ -493,25 +595,48 @@ class GroupwareAutomation:
                         print("❌ 전체 체크박스 클릭 실패")
                         break
                 else:
-                    # 더 이상 처리할 데이터가 없으면 종료
+                    # 이번 라운드에서 처리된 데이터가 없으면 종료
+                    print("🔚 현재 페이지에서 더 이상 처리할 데이터가 없어 작업을 종료합니다")
+                    break
+                    
+                # 모든 데이터 처리 완료 확인
+                if processed_count >= total_records:
                     print("🔚 모든 데이터 처리 완료")
                     break
                 
                 round_number += 1
             
             print("🎉 모든 작업 완료!")
+            print("🌐 브라우저가 열린 상태로 유지됩니다. 확인 후 수동으로 닫아주세요.")
             if progress_callback:
-                progress_callback("모든 작업이 완료되었습니다!")
+                progress_callback("모든 작업이 완료되었습니다! (브라우저는 열린 상태로 유지됩니다)")
             
         except Exception as e:
             print(f"❌ 자동화 실패: {e}")
             if progress_callback:
                 progress_callback(f"작업 중 오류 발생: {str(e)}")
+            print("🌐 오류가 발생했지만 브라우저는 열린 상태로 유지됩니다. 확인 후 수동으로 닫아주세요.")
             raise e
-        finally:
-            if self.driver:
-                print("🔚 브라우저 종료")
-                self.driver.quit()
+        
+    def _check_has_next_page(self):
+        """다음 페이지가 있는지 확인 - data-dt-idx로 판단"""
+        try:
+            print("🔍 페이지네이션 확인 중...")
+            pagination_links = self.driver.find_elements(By.XPATH, "//div[@id='tblExpendCardList_paginate']//a")
+            max_idx = max(int(link.get_attribute("data-dt-idx")) for link in pagination_links if link.get_attribute("data-dt-idx"))
+            
+            print(f"📄 최대 data-dt-idx: {max_idx}")
+            
+            # max_idx가 2이면 1페이지만 있음, 3 이상이면 2페이지 이상 있음
+            if max_idx <= 2:
+                print("📄 다음 페이지 없음 (1페이지만 존재)")
+                return False
+            else:
+                print(f"📄 다음 페이지 존재 (max_idx={max_idx})")
+                return True
+        except Exception as e:
+            print(f"❌ 페이지네이션 확인 실패: {e}")
+            return True  # 확인 실패시 안전하게 계속 진행
         
     def _click_apply_button(self):
         """반영 버튼 클릭 및 완료까지 대기"""
@@ -521,14 +646,14 @@ class GroupwareAutomation:
             # config에서 반영 버튼 정보 가져오기
             apply_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, self.config.CARD_ELEMENTS["apply_btn"])))
             apply_btn.click()
-            print("✅ 반영 버튼 클릭 완료")
+            print("반영 버튼 클릭 완료")
             
             # 반영 진행률 팝업이 나타날 때까지 대기
             time.sleep(2)
             
             # 반영 완료까지 대기
             if self._wait_for_apply_completion():
-                print("✅ 반영 완료")
+                print("반영 완료")
                 return True
             else:
                 print("❌ 반영 대기 중 오류 발생")
@@ -540,11 +665,11 @@ class GroupwareAutomation:
             try:
                 apply_btn = self.driver.find_element(By.ID, "btnExpendCardToExpend")
                 apply_btn.click()
-                print("✅ 반영 버튼 클릭 완료 (백업 방법)")
+                print("반영 버튼 클릭 완료 (백업 방법)")
                 
                 # 반영 완료까지 대기
                 if self._wait_for_apply_completion():
-                    print("✅ 반영 완료")
+                    print("반영 완료")
                     return True
                 else:
                     return False
@@ -656,15 +781,15 @@ class GroupwareAutomation:
                     continue
             
             if not select_all_btn:
-                print("❌ 전체 체크박스를 찾을 수 없음")
+                print("전체 체크박스를 찾을 수 없음")
                 return False
             
             select_all_btn.click()
             time.sleep(2)  # 체크박스 선택 처리 대기
             
-            print("✅ 전체 체크박스 클릭 완료")
+            print("전체 체크박스 클릭 완료")
             return True
             
         except Exception as e:
-            print(f"❌ 전체 체크박스 클릭 실패: {e}")
+            print(f"전체 체크박스 클릭 실패: {e}")
             return False
